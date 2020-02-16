@@ -4,9 +4,15 @@
 #include <WiFiUdp.h>
 #include <WiFi.h>
 
-#define NTP_OFFSET 2 * 60 * 60 // In seconds
+#include "esp_wpa2.h"              //wpa2 library for connections to Enterprise networks
+#define EAP_IDENTITY "sPetri61079" //if connecting from another corporation, use identity@organisation.domain in Eduroam
+#define EAP_PASSWORD "7env8ifu"    //your Eduroam password
+const char *ssid = "SPSCV-STUD";   // Eduroam SSID
+
+#define NTP_OFFSET 1 * 60 * 60 // Zimni cas
+//#define NTP_OFFSET 2 * 60 * 60 // Letni cas
 #define NTP_INTERVAL 60 * 1000 // In miliseconds
-#define NTP_ADDRESS "0.pool.ntp.org"
+#define NTP_ADDRESS "ntp.nic.cz"
 
 struct timeStruct
 {
@@ -101,7 +107,6 @@ void task_counting(void *parameters)
   while (1)
   {
     seconds = convertToSeconds(time_RTC);
-    diff = 0;
     if (seconds < convertToSeconds(timePoints[0]))
     {
       diff = convertToSeconds(timePoints[0]) - seconds;
@@ -154,7 +159,7 @@ void task_counting(void *parameters)
     }
     else
     {
-      int vteriny = (int) diff;
+      int vteriny = (int)diff;
 
       charsShow[0] = ((vteriny / 10) % 10) + '0';
       charsShow[1] = (vteriny % 10) + '0';
@@ -202,22 +207,32 @@ void task_RTC(void *parameters)
 void task_NTP(void *parameters)
 {
   delay(1000);
-  WiFi.begin("ThinkSpot", "1234567890");
-  timeClient.begin();
-  while (WiFi.status() != WL_CONNECTED)
+  if (WiFi.status() != WL_CONNECTED)
   {
-    delay(1000);
+    Serial.println();
+    Serial.print("Connecting to network: ");
+    Serial.println(ssid);
+    WiFi.disconnect(true);                                                             //disconnect form wifi to set new wifi connection
+    WiFi.mode(WIFI_STA);                                                               //init wifi mode
+    esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)EAP_IDENTITY, strlen(EAP_IDENTITY)); //provide identity
+    esp_wifi_sta_wpa2_ent_set_username((uint8_t *)EAP_IDENTITY, strlen(EAP_IDENTITY)); //provide username --> identity and username is same
+    esp_wifi_sta_wpa2_ent_set_password((uint8_t *)EAP_PASSWORD, strlen(EAP_PASSWORD)); //provide password
+    esp_wpa2_config_t config = WPA2_CONFIG_INIT_DEFAULT();                             //set config settings to default
+    esp_wifi_sta_wpa2_ent_enable(&config);                                             //set config settings to enable function
+    WiFi.begin(ssid);                                                                  //connect to wifi
+    while (WiFi.status() != WL_CONNECTED)
+    {
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println("");
+    Serial.println("WiFi connected");
+    Serial.println("IP address set: ");
+    Serial.println(WiFi.localIP()); //print LAN IP
   }
+  timeClient.begin();
   while (1)
   {
-    if (WiFi.status() != WL_CONNECTED)
-    {
-      WiFi.begin("ThinkSpot", "1234567890");
-      while (WiFi.status() != WL_CONNECTED)
-      {
-        delay(1000);
-      }
-    }
     if (timeClient.update())
     {
       time_NTP.hours = (uint8_t)timeClient.getHours();
